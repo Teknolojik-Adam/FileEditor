@@ -1,0 +1,5 @@
+- 📄 Dosya açma ve düzenleme (TXT, JSON vb.)
+- 💾 Dosya kaydetme
+- 🔍 Arama ve değiştirme (beta)
+- 🇹🇷 Türkçe arayüz desteği
+- Temel işlevler
