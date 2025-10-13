@@ -2,4 +2,5 @@
 - 💾 Dosya kaydetme
 - 🔍 Arama ve değiştirme (beta)
 - 🇹🇷 Türkçe arayüz desteği
+- 🇬🇧 İngilizce arayüz (yeni eklendi)
 - Temel işlevler
