@@ -1,17 +1,13 @@
 ﻿<Window x:Class="dosya_duzenleme.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d"
-        Title="Metin Düzenleyici" 
+        Title="Text Editor" 
         Height="600" 
         Width="800"
         WindowStartupLocation="CenterScreen"
         Background="#F5F5F5">
 
     <Window.Resources>
-        <!-- Stiller -->
         <Style x:Key="FlatButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -68,67 +64,51 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Toolbar -->
-        <ToolBar Grid.Row="0" 
-                 Background="White" 
-                 Height="40" 
-                 Padding="5">
-
-            <!-- File Operations -->
-            <Button x:Name="new" Content="📄 Yeni" Style="{StaticResource FlatButton}" Height="24" Click="new_Click"/>
-            <Button x:Name="ac" Content="📂 Aç" Style="{StaticResource FlatButton}" Height="25" Click="ac_Click"/>
-            <Button x:Name="kaydet" Content="💾 Kaydet" Style="{StaticResource FlatButton}" Height="26" Click="kaydet_Click"/>
+        <ToolBar Grid.Row="0" Background="White" Height="40" Padding="5">
+            <!-- File -->
+            <Button x:Name="btnNew" Content="New" Style="{StaticResource FlatButton}" Height="24" Click="New_Click"/>
+            <Button x:Name="btnOpen" Content="Open" Style="{StaticResource FlatButton}" Height="25" Click="Open_Click"/>
+            <Button x:Name="btnSave" Content="Save" Style="{StaticResource FlatButton}" Height="26" Click="Save_Click"/>
             <Separator Style="{StaticResource VerticalSeparator}"/>
 
-            <!-- Edit Operations -->
-            <Button x:Name="geriAl" Content="↩" ToolTip="Geri Al" Style="{StaticResource IconButton}" Height="24" Click="geriAl_Click"/>
-            <Button x:Name="yinele" Content="↪" ToolTip="Yinele" Style="{StaticResource IconButton}" Height="25" Click="yinele_Click"/>
+            <!-- Edit -->
+            <Button x:Name="btnUndo" Content="↩" ToolTip="Undo" Style="{StaticResource IconButton}" Height="24" Click="Undo_Click"/>
+            <Button x:Name="btnRedo" Content="↪" ToolTip="Redo" Style="{StaticResource IconButton}" Height="25" Click="Redo_Click"/>
             <Separator Style="{StaticResource VerticalSeparator}"/>
 
-            <!-- Font Controls -->
-            <ComboBox Name="fontComboBox" 
-                      Width="120" 
-                      Style="{StaticResource MinimalComboBox}" SelectionChanged="fontComboBox_SelectionChanged">
+            <!-- Font -->
+            <ComboBox x:Name="fontComboBox" Width="120" Style="{StaticResource MinimalComboBox}" SelectionChanged="FontComboBox_SelectionChanged">
                 <ComboBoxItem Content="Arial"/>
                 <ComboBoxItem Content="Times New Roman"/>
                 <ComboBoxItem Content="Verdana"/>
             </ComboBox>
 
-            <ComboBox Name="fontSizeComboBox" 
-                      Width="60" 
-                      Style="{StaticResource MinimalComboBox}" VerticalAlignment="Top" SelectionChanged="fontSizeComboBox_SelectionChanged">
+            <ComboBox x:Name="fontSizeComboBox" Width="60" Style="{StaticResource MinimalComboBox}" VerticalAlignment="Top" SelectionChanged="FontSizeComboBox_SelectionChanged">
                 <ComboBoxItem Content="8"/>
                 <ComboBoxItem Content="12"/>
                 <ComboBoxItem Content="16"/>
                 <ComboBoxItem Content="24"/>
             </ComboBox>
 
-            <!-- Text Formatting -->
-            <ToggleButton x:Name="boldButton" Content="B" 
-                        Style="{StaticResource FormatButton}" Checked="boldButton_Checked"
-                          Unchecked="BoldButton_Unchecked"/>
-            <ToggleButton x:Name="italicButton" Content="I" 
-                        Style="{StaticResource FormatButton}" Checked="italicButton_Checked"/>
-            <ToggleButton x:Name="underlineButton" Content="U" 
-                        Style="{StaticResource FormatButton}" Height="28" Checked="underlineButton_Checked" Unchecked="UnderlineButton_Unchecked"/>
+            <!-- Format -->
+            <ToggleButton x:Name="boldButton" Content="B" Style="{StaticResource FormatButton}" Checked="BoldButton_Checked" Unchecked="BoldButton_Unchecked"/>
+            <ToggleButton x:Name="italicButton" Content="I" Style="{StaticResource FormatButton}" Checked="ItalicButton_Checked" Unchecked="ItalicButton_Unchecked"/>
+            <ToggleButton x:Name="underlineButton" Content="U" Style="{StaticResource FormatButton}" Height="28" Checked="UnderlineButton_Checked" Unchecked="UnderlineButton_Unchecked"/>
 
-            <!-- Search/Replace -->
             <Separator Style="{StaticResource VerticalSeparator}"/>
-            <Button Content="🔍 Bul" Style="{StaticResource FlatButton}" Height="26" Click="Button_Click"/>
-            <Button Content="🔄 Değiştir" Style="{StaticResource FlatButton}" Height="26" Click="Button_Click_1"/>
+            <Button x:Name="btnFind" Content="Find" Style="{StaticResource FlatButton}" Height="26" Click="Find_Click"/>
+            <Button x:Name="btnReplace" Content="Replace" Style="{StaticResource FlatButton}" Height="26" Click="Replace_Click"/>
+
+            <Separator Style="{StaticResource VerticalSeparator}"/>
+            <!-- Language switch -->
+            <Button x:Name="btnTurkish" Content="TR" Style="{StaticResource FlatButton}" Height="26" Click="SwitchToTurkish_Click" ToolTip="Turkish"/>
+            <Button x:Name="btnEnglish" Content="EN" Style="{StaticResource FlatButton}" Height="26" Click="SwitchToEnglish_Click" ToolTip="English"/>
         </ToolBar>
 
-        <!-- Editor Area -->
-        <RichTextBox x:Name="yazi1" 
-                     Grid.Row="1" 
-                     Margin="10"
-                     BorderThickness="1"
-                     BorderBrush="#E0E0E0"
-                     Background="White"
-                     VerticalScrollBarVisibility="Auto">
+        <RichTextBox x:Name="editor" Grid.Row="1" Margin="10" BorderThickness="1" BorderBrush="#E0E0E0" Background="White" VerticalScrollBarVisibility="Auto" TextChanged="Editor_TextChanged">
             <FlowDocument>
                 <Paragraph>
-                    <Run Text="Metninizi buraya yazın..."/>
+                    <Run Text="Type your text here..."/>
                 </Paragraph>
             </FlowDocument>
         </RichTextBox>
