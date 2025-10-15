@@ -8,18 +8,84 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 
 namespace dosya_duzenleme
 {
+    public static class RichTextBoxBinder
+    {
+        public static readonly DependencyProperty DocumentProperty =
+            DependencyProperty.RegisterAttached(
+                "Document",
+                typeof(FlowDocument),
+                typeof(RichTextBoxBinder),
+                new FrameworkPropertyMetadata(null, OnDocumentChanged));
+
+        public static FlowDocument GetDocument(DependencyObject dp)
+        {
+            return (FlowDocument)dp.GetValue(DocumentProperty);
+        }
+
+        public static void SetDocument(DependencyObject dp, FlowDocument value)
+        {
+            dp.SetValue(DocumentProperty, value);
+        }
+
+        private static void OnDocumentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var rtb = (RichTextBox)d;
+            rtb.Document = (FlowDocument)e.NewValue;
+        }
+    }
+
+    public class DocumentTab : INotifyPropertyChanged
+    {
+        private string _header;
+        public string Header
+        {
+            get { return _header; }
+            set
+            {
+                if (_header != value)
+                {
+                    _header = value;
+                    OnPropertyChanged(nameof(Header));
+                }
+            }
+        }
+
+        public string FilePath { get; set; }
+        public FlowDocument Content { get; set; }
+        public bool IsDirty { get; set; }
+
+        [Bindable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public RichTextBox Editor { get; set; }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected void OnPropertyChanged(string name)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+
+        public DocumentTab()
+        {
+            Content = new FlowDocument();
+            IsDirty = false;
+        }
+    }
+
     public partial class MainWindow : Window
     {
         private ResourceManager? _rm;
-        private string _filePath = string.Empty;
-        private bool _isTextChanged = false;
+        private ObservableCollection<DocumentTab> _documentTabs = new ObservableCollection<DocumentTab>();
 
         public MainWindow()
         {
             InitializeComponent();
+            tabControl.ItemsSource = _documentTabs;
 
             try
             {
@@ -30,29 +96,58 @@ namespace dosya_duzenleme
                 _rm = null;
             }
 
-            // Varsayılan olarak İngilizce başlatmak için burasi değişmeli
+         
             ApplyLanguage(new CultureInfo("en"));
 
-            UpdateWindowTitle();
-            UpdateStatusBar();
+            AddNewTab();
+        }
+
+        private void AddNewTab(string filePath = null)
+        {
+            var culture = CultureInfo.CurrentUICulture;
+            var newTab = new DocumentTab();
+
+            if (string.IsNullOrEmpty(filePath))
+            {
+                newTab.Header = GetStringOrFallback("Title_NewDocument", culture, "New Document");
+                newTab.FilePath = null;
+            }
+            else
+            {
+                newTab.Header = Path.GetFileName(filePath);
+                newTab.FilePath = filePath;
+            }
+
+            _documentTabs.Add(newTab);
+            tabControl.SelectedItem = newTab;
         }
 
         private void UpdateWindowTitle()
         {
             var culture = CultureInfo.CurrentUICulture;
-            var titleNew = GetStringOrFallback("Title_NewDocument", culture, "Text Editor - New Document");
             var titleEditor = GetStringOrFallback("Title_Editor", culture, "Text Editor");
-            Title = string.IsNullOrEmpty(_filePath) ? titleNew : $"{titleEditor} - {Path.GetFileName(_filePath)}";
+
+            if (tabControl.SelectedItem is DocumentTab currentTab && currentTab != null)
+            {
+                Title = $"{titleEditor} - {currentTab.Header}";
+            }
+            else
+            {
+                Title = titleEditor;
+            }
         }
 
         private bool CheckUnsavedChanges()
         {
-            if (!_isTextChanged) return false;
-            var culture = CultureInfo.CurrentUICulture;
-            var message = GetStringOrFallback("Msg_UnsavedChanges", culture, "There are unsaved changes. Do you want to save them?");
-            var caption = GetStringOrFallback("Title_Warning", culture, "Warning");
-            var result = MessageBox.Show(message, caption, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
-            return HandleSaveDialogResult(result);
+            if (tabControl.SelectedItem is DocumentTab currentTab && currentTab.IsDirty)
+            {
+                var culture = CultureInfo.CurrentUICulture;
+                var message = GetStringOrFallback("Msg_UnsavedChanges", culture, "There are unsaved changes. Do you want to save them?");
+                var caption = GetStringOrFallback("Title_Warning", culture, "Warning");
+                var result = MessageBox.Show(message, caption, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+                return HandleSaveDialogResult(result);
+            }
+            return false;
         }
 
         private bool HandleSaveDialogResult(MessageBoxResult result)
@@ -71,21 +166,16 @@ namespace dosya_duzenleme
 
         private void New_Click(object sender, RoutedEventArgs e)
         {
-            if (CheckUnsavedChanges()) return;
-            _filePath = string.Empty;
-            editor.Document.Blocks.Clear();
-            _isTextChanged = false;
-            UpdateWindowTitle();
+            AddNewTab();
         }
 
         private void Open_Click(object sender, RoutedEventArgs e)
         {
-            if (CheckUnsavedChanges()) return;
             var dlg = new OpenFileDialog();
             if (dlg.ShowDialog() == true)
             {
-                _filePath = dlg.FileName;
-                LoadFileContent();
+                AddNewTab(dlg.FileName);
+                LoadFileContent(tabControl.SelectedItem as DocumentTab);
             }
         }
 
@@ -93,22 +183,25 @@ namespace dosya_duzenleme
 
         private void SaveFile(bool saveAs)
         {
-            if (saveAs || string.IsNullOrEmpty(_filePath))
+            if (!(tabControl.SelectedItem is DocumentTab currentTab)) return;
+
+            if (saveAs || string.IsNullOrEmpty(currentTab.FilePath))
             {
                 var dlg = new SaveFileDialog();
                 if (dlg.ShowDialog() != true) return;
-                _filePath = dlg.FileName;
+                currentTab.FilePath = dlg.FileName;
+                currentTab.Header = Path.GetFileName(currentTab.FilePath);
             }
 
             try
             {
-                using (var writer = new StreamWriter(_filePath))
+                using (var writer = new StreamWriter(currentTab.FilePath))
                 {
-                    var textRange = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd);
+                    var textRange = new TextRange(currentTab.Content.ContentStart, currentTab.Content.ContentEnd);
                     textRange.Save(writer.BaseStream, DataFormats.Text);
                 }
 
-                _isTextChanged = false;
+                currentTab.IsDirty = false;
                 UpdateWindowTitle();
             }
             catch (Exception ex)
@@ -120,30 +213,50 @@ namespace dosya_duzenleme
             }
         }
 
-        private void LoadFileContent()
+        private void LoadFileContent(DocumentTab tab)
         {
+            if (tab == null || string.IsNullOrEmpty(tab.FilePath)) return;
+
             try
             {
-                using (var reader = new StreamReader(_filePath))
+                using (var reader = new StreamReader(tab.FilePath))
                 {
-                    editor.Document.Blocks.Clear();
-                    new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd)
-                        .Load(reader.BaseStream, DataFormats.Text);
+                    var textRange = new TextRange(tab.Content.ContentStart, tab.Content.ContentEnd);
+                    textRange.Load(reader.BaseStream, DataFormats.Text);
                 }
-                _isTextChanged = false;
+                tab.IsDirty = false;
                 UpdateWindowTitle();
             }
             catch (Exception ex)
             {
                 var err = string.Format(GetStringOrFallback("Msg_FileOpenError", CultureInfo.CurrentUICulture, "File open error: {0}"), ex.Message);
                 MessageBox.Show(err, GetStringOrFallback("Title_Error", CultureInfo.CurrentUICulture, "Error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                _documentTabs.Remove(tab); 
             }
         }
 
-        private void Undo_Click(object sender, RoutedEventArgs e) { if (editor.CanUndo) editor.Undo(); }
-        private void Redo_Click(object sender, RoutedEventArgs e) { if (editor.CanRedo) editor.Redo(); }
+        private void Undo_Click(object sender, RoutedEventArgs e)
+        {
+            if (tabControl.SelectedItem is DocumentTab currentTab && currentTab.Editor?.CanUndo == true)
+            {
+                currentTab.Editor.Undo();
+            }
+        }
+        private void Redo_Click(object sender, RoutedEventArgs e)
+        {
+            if (tabControl.SelectedItem is DocumentTab currentTab && currentTab.Editor?.CanRedo == true)
+            {
+                currentTab.Editor.Redo();
+            }
+        }
 
-        private void FormatText(Action<TextSelection> formatAction) { if (!editor.Selection.IsEmpty) formatAction(editor.Selection); }
+        private void FormatText(Action<TextSelection> formatAction)
+        {
+            if (tabControl.SelectedItem is DocumentTab currentTab && currentTab.Editor != null && !currentTab.Editor.Selection.IsEmpty)
+            {
+                formatAction(currentTab.Editor.Selection);
+            }
+        }
 
         private void BoldButton_Checked(object sender, RoutedEventArgs e) { FormatText(s => s.ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Bold)); }
         private void BoldButton_Unchecked(object sender, RoutedEventArgs e) { FormatText(s => s.ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Normal)); }
@@ -165,6 +278,9 @@ namespace dosya_duzenleme
 
         private void Find_Click(object sender, RoutedEventArgs e)
         {
+            if (!(tabControl.SelectedItem is DocumentTab currentTab) || currentTab.Editor == null) return;
+            var editor = currentTab.Editor;
+
             var prompt = GetStringOrFallback("Prompt_Find", CultureInfo.CurrentUICulture, "Find");
             var searchText = Microsoft.VisualBasic.Interaction.InputBox(prompt, prompt, "");
             if (string.IsNullOrWhiteSpace(searchText)) return;
@@ -177,17 +293,23 @@ namespace dosya_duzenleme
                 return;
             }
 
-            var start = editor.Document.ContentStart.GetPositionAtOffset(index, LogicalDirection.Forward);
-            var end = start?.GetPositionAtOffset(searchText.Length, LogicalDirection.Forward);
-            if (start != null && end != null)
+            var start = editor.Document.ContentStart.GetPositionAtOffset(index + 1, LogicalDirection.Forward);
+            if (start != null)
             {
-                editor.Selection.Select(start, end);
-                editor.ScrollToVerticalOffset(editor.Selection.Start.GetCharacterRect(LogicalDirection.Forward).Top);
+                var end = start.GetPositionAtOffset(searchText.Length, LogicalDirection.Forward);
+                if (end != null)
+                {
+                    editor.Selection.Select(start, end);
+                    editor.Focus();
+                }
             }
         }
 
         private void Replace_Click(object sender, RoutedEventArgs e)
         {
+            if (!(tabControl.SelectedItem is DocumentTab currentTab) || currentTab.Editor == null) return;
+            var editor = currentTab.Editor;
+
             var culture = CultureInfo.CurrentUICulture;
             var promptOld = GetStringOrFallback("Prompt_Replace_Old", culture, "Text to replace");
             var oldText = Microsoft.VisualBasic.Interaction.InputBox(promptOld, promptOld, "");
@@ -211,16 +333,25 @@ namespace dosya_duzenleme
 
                 var rangeToReplace = new TextRange(start, end);
                 rangeToReplace.Text = newText;
-                _isTextChanged = true;
 
-               
                 current = rangeToReplace.End;
+            }
+        }
+
+        private void Editor_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is RichTextBox editor && editor.DataContext is DocumentTab tab)
+            {
+                tab.Editor = editor;
             }
         }
 
         private void Editor_TextChanged(object sender, TextChangedEventArgs e)
         {
-            _isTextChanged = true;
+            if (tabControl.SelectedItem is DocumentTab currentTab)
+            {
+                currentTab.IsDirty = true;
+            }
             UpdateStatusBar();
         }
 
@@ -230,36 +361,52 @@ namespace dosya_duzenleme
             Thread.CurrentThread.CurrentCulture = culture;
             Thread.CurrentThread.CurrentUICulture = culture;
 
-            
+       
             UpdateWindowTitle();
+            UpdateUiForLanguage(culture);
+            UpdateStatusBar();
+        }
 
-           
-            btnNew.Content = GetStringOrFallback("Menu_New", culture, culture.TwoLetterISOLanguageName == "en" ? "New" : "Yeni");
-            btnOpen.Content = GetStringOrFallback("Menu_Open", culture, culture.TwoLetterISOLanguageName == "en" ? "Open" : "Aç");
-            btnSave.Content = GetStringOrFallback("Menu_Save", culture, culture.TwoLetterISOLanguageName == "en" ? "Save" : "Kaydet");
+        private void CloseTab_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as Button)?.CommandParameter is DocumentTab tab)
+            {
+                if (tab.IsDirty)
+                {
+                    tabControl.SelectedItem = tab;
+                    if (CheckUnsavedChanges()) return; 
+                }
+                _documentTabs.Remove(tab);
 
-            btnUndo.ToolTip = GetStringOrFallback("ToolTip_Undo", culture, culture.TwoLetterISOLanguageName == "en" ? "Undo" : "Geri Al");
-            btnRedo.ToolTip = GetStringOrFallback("ToolTip_Redo", culture, culture.TwoLetterISOLanguageName == "en" ? "Redo" : "Yinele");
+                if (_documentTabs.Count == 0)
+                {
+                    Application.Current.Shutdown();
+                }
+            }
+        }
 
-            fontComboBox.ToolTip = GetStringOrFallback("ToolTip_FontFamily", culture, culture.TwoLetterISOLanguageName == "en" ? "Font" : "Yazı Tipi");
-            fontSizeComboBox.ToolTip = GetStringOrFallback("ToolTip_FontSize", culture, culture.TwoLetterISOLanguageName == "en" ? "Font Size" : "Yazı Boyutu");
+        private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.Source is TabControl)
+            {
+                UpdateWindowTitle();
+                UpdateStatusBar();
+            }
+        }
 
-            btnFind.Content = GetStringOrFallback("Button_Find", culture, culture.TwoLetterISOLanguageName == "en" ? "Find" : "Bul");
-            btnReplace.Content = GetStringOrFallback("Button_Replace", culture, culture.TwoLetterISOLanguageName == "en" ? "Replace" : "Değiştir");
-
+        private void UpdateUiForLanguage(CultureInfo culture)
+        {
+            btnNew.Content = GetStringOrFallback("Menu_New", culture, "New");
+            btnOpen.Content = GetStringOrFallback("Menu_Open", culture, "Open");
+            btnSave.Content = GetStringOrFallback("Menu_Save", culture, "Save");
+            btnUndo.ToolTip = GetStringOrFallback("ToolTip_Undo", culture, "Undo");
+            btnRedo.ToolTip = GetStringOrFallback("ToolTip_Redo", culture, "Redo");
+            fontComboBox.ToolTip = GetStringOrFallback("ToolTip_FontFamily", culture, "Font");
+            fontSizeComboBox.ToolTip = GetStringOrFallback("ToolTip_FontSize", culture, "Font Size");
+            btnFind.Content = GetStringOrFallback("Button_Find", culture, "Find");
+            btnReplace.Content = GetStringOrFallback("Button_Replace", culture, "Replace");
             btnTurkish.ToolTip = GetStringOrFallback("ToolTip_Turkish", culture, "Turkish");
             btnEnglish.ToolTip = GetStringOrFallback("ToolTip_English", culture, "English");
-
-            
-            var placeholder = GetStringOrFallback("Placeholder_Text", culture, culture.TwoLetterISOLanguageName == "en" ? "Type your text here..." : "Metninizi buraya yazın...");
-            var docText = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd).Text;
-            if (string.IsNullOrWhiteSpace(docText) || docText.Trim() == "Metninizi buraya yazın..." || docText.Trim() == "Type your text here...")
-            {
-                editor.Document.Blocks.Clear();
-                editor.Document.Blocks.Add(new Paragraph(new Run(placeholder)));
-            }
-
-            UpdateStatusBar();
         }
 
         private string GetStringOrFallback(string key, CultureInfo culture, string fallback)
@@ -276,24 +423,42 @@ namespace dosya_duzenleme
         private void SwitchToEnglish_Click(object sender, RoutedEventArgs e) { ApplyLanguage(new CultureInfo("en")); }
         private void SwitchToTurkish_Click(object sender, RoutedEventArgs e) { ApplyLanguage(new CultureInfo("tr-TR")); }
 
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            foreach (var tab in _documentTabs.ToList()) 
+            {
+                tabControl.SelectedItem = tab;
+                if (CheckUnsavedChanges())
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
+        }
+
         private void UpdateStatusBar()
         {
-           
             if (wordCountLabel == null || charCountLabel == null)
                 return;
 
-            var text = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd).Text;
-            var culture = CultureInfo.CurrentUICulture;
+            if (tabControl.SelectedItem is DocumentTab currentTab)
+            {
+                var text = new TextRange(currentTab.Content.ContentStart, currentTab.Content.ContentEnd).Text;
+                var culture = CultureInfo.CurrentUICulture;
 
-            // Kelime sayısı (boşluklara göre ayırarak)
-            var wordCount = text.Split(new[] { ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
-            var wordLabel = GetStringOrFallback("Status_Words", culture, "Words:");
-            wordCountLabel.Text = $"{wordLabel} {wordCount}";
+                var wordCount = text.Split(new[] { ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
+                var wordLabel = GetStringOrFallback("Status_Words", culture, "Words:");
+                wordCountLabel.Text = $"{wordLabel} {wordCount}";
 
-            // Karakter sayısı (boşluklar dahil)
-            var charCount = text.TrimEnd('\r', '\n').Length;
-            var charLabel = GetStringOrFallback("Status_Chars", culture, "Characters:");
-            charCountLabel.Text = $"{charLabel} {charCount}";
+                var charCount = text.TrimEnd('\r', '\n').Length;
+                var charLabel = GetStringOrFallback("Status_Chars", culture, "Characters:");
+                charCountLabel.Text = $"{charLabel} {charCount}";
+            }
+            else
+            {
+                wordCountLabel.Text = string.Empty;
+                charCountLabel.Text = string.Empty;
+            }
         }
     }
 }
