@@ -62,6 +62,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <ToolBar Grid.Row="0" Background="White" Height="40" Padding="5">
@@ -105,12 +106,32 @@
             <Button x:Name="btnEnglish" Content="EN" Style="{StaticResource FlatButton}" Height="26" Click="SwitchToEnglish_Click" ToolTip="English"/>
         </ToolBar>
 
-        <RichTextBox x:Name="editor" Grid.Row="1" Margin="10" BorderThickness="1" BorderBrush="#E0E0E0" Background="White" VerticalScrollBarVisibility="Auto" TextChanged="Editor_TextChanged">
+        <RichTextBox x:Name="editor" Grid.Row="1" Margin="10,10,10,0" BorderThickness="1" BorderBrush="#E0E0E0" Background="White" VerticalScrollBarVisibility="Auto" TextChanged="Editor_TextChanged">
             <FlowDocument>
                 <Paragraph>
                     <Run Text="Type your text here..."/>
                 </Paragraph>
             </FlowDocument>
         </RichTextBox>
+
+        <StatusBar Grid.Row="2" Background="#F5F5F5" Height="22">
+            <StatusBar.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                    </Grid>
+                </ItemsPanelTemplate>
+            </StatusBar.ItemsPanel>
+            <StatusBarItem Grid.Column="1">
+                <TextBlock x:Name="wordCountLabel" Margin="0,0,5,0" />
+            </StatusBarItem>
+            <StatusBarItem Grid.Column="2">
+                <TextBlock x:Name="charCountLabel" Margin="0,0,10,0" />
+            </StatusBarItem>
+        </StatusBar>
     </Grid>
 </Window>

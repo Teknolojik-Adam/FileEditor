@@ -30,10 +30,11 @@ namespace dosya_duzenleme
                 _rm = null;
             }
 
-            // Varsayılan olarak İngilizce başlatmak için burayı değiştirin:
+            // Varsayılan olarak İngilizce başlatmak için burasi değişmeli
             ApplyLanguage(new CultureInfo("en"));
 
             UpdateWindowTitle();
+            UpdateStatusBar();
         }
 
         private void UpdateWindowTitle()
@@ -99,14 +100,24 @@ namespace dosya_duzenleme
                 _filePath = dlg.FileName;
             }
 
-            using (var writer = new StreamWriter(_filePath))
+            try
             {
-                new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd)
-                    .Save(writer.BaseStream, DataFormats.Text);
-            }
+                using (var writer = new StreamWriter(_filePath))
+                {
+                    var textRange = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd);
+                    textRange.Save(writer.BaseStream, DataFormats.Text);
+                }
 
-            _isTextChanged = false;
-            UpdateWindowTitle();
+                _isTextChanged = false;
+                UpdateWindowTitle();
+            }
+            catch (Exception ex)
+            {
+                var culture = CultureInfo.CurrentUICulture;
+                var message = string.Format(GetStringOrFallback("Msg_FileSaveError", culture, "File could not be saved: {0}"), ex.Message);
+                var caption = GetStringOrFallback("Title_Error", culture, "Error");
+                MessageBox.Show(message, caption, MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void LoadFileContent()
@@ -177,20 +188,41 @@ namespace dosya_duzenleme
 
         private void Replace_Click(object sender, RoutedEventArgs e)
         {
-            var promptOld = GetStringOrFallback("Prompt_Replace_Old", CultureInfo.CurrentUICulture, "Text to replace");
+            var culture = CultureInfo.CurrentUICulture;
+            var promptOld = GetStringOrFallback("Prompt_Replace_Old", culture, "Text to replace");
             var oldText = Microsoft.VisualBasic.Interaction.InputBox(promptOld, promptOld, "");
             if (string.IsNullOrEmpty(oldText)) return;
-            var promptNew = GetStringOrFallback("Prompt_Replace_New", CultureInfo.CurrentUICulture, "New text");
+
+            var promptNew = GetStringOrFallback("Prompt_Replace_New", culture, "New text");
             var newText = Microsoft.VisualBasic.Interaction.InputBox(promptNew, promptNew, "") ?? string.Empty;
 
-            var textRange = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd);
-            var replaced = textRange.Text.Replace(oldText, newText);
-            editor.Document.Blocks.Clear();
-            editor.Document.Blocks.Add(new Paragraph(new Run(replaced)));
-            _isTextChanged = true;
+            var current = editor.Document.ContentStart;
+            while (current != null && current.CompareTo(editor.Document.ContentEnd) < 0)
+            {
+                var searchRange = new TextRange(current, editor.Document.ContentEnd);
+                var result = searchRange.Text.IndexOf(oldText, StringComparison.OrdinalIgnoreCase);
+                if (result < 0) break;
+
+                var start = searchRange.Start.GetPositionAtOffset(result);
+                if (start == null) break;
+
+                var end = start.GetPositionAtOffset(oldText.Length);
+                if (end == null) break;
+
+                var rangeToReplace = new TextRange(start, end);
+                rangeToReplace.Text = newText;
+                _isTextChanged = true;
+
+               
+                current = rangeToReplace.End;
+            }
         }
 
-        private void Editor_TextChanged(object sender, TextChangedEventArgs e) { _isTextChanged = true; }
+        private void Editor_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _isTextChanged = true;
+            UpdateStatusBar();
+        }
 
         private void ApplyLanguage(CultureInfo culture)
         {
@@ -198,10 +230,10 @@ namespace dosya_duzenleme
             Thread.CurrentThread.CurrentCulture = culture;
             Thread.CurrentThread.CurrentUICulture = culture;
 
-            // Window title
+            
             UpdateWindowTitle();
 
-            // Buttons & tooltips
+           
             btnNew.Content = GetStringOrFallback("Menu_New", culture, culture.TwoLetterISOLanguageName == "en" ? "New" : "Yeni");
             btnOpen.Content = GetStringOrFallback("Menu_Open", culture, culture.TwoLetterISOLanguageName == "en" ? "Open" : "Aç");
             btnSave.Content = GetStringOrFallback("Menu_Save", culture, culture.TwoLetterISOLanguageName == "en" ? "Save" : "Kaydet");
@@ -218,7 +250,7 @@ namespace dosya_duzenleme
             btnTurkish.ToolTip = GetStringOrFallback("ToolTip_Turkish", culture, "Turkish");
             btnEnglish.ToolTip = GetStringOrFallback("ToolTip_English", culture, "English");
 
-            // Placeholder text update if doc empty or default
+            
             var placeholder = GetStringOrFallback("Placeholder_Text", culture, culture.TwoLetterISOLanguageName == "en" ? "Type your text here..." : "Metninizi buraya yazın...");
             var docText = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd).Text;
             if (string.IsNullOrWhiteSpace(docText) || docText.Trim() == "Metninizi buraya yazın..." || docText.Trim() == "Type your text here...")
@@ -226,6 +258,8 @@ namespace dosya_duzenleme
                 editor.Document.Blocks.Clear();
                 editor.Document.Blocks.Add(new Paragraph(new Run(placeholder)));
             }
+
+            UpdateStatusBar();
         }
 
         private string GetStringOrFallback(string key, CultureInfo culture, string fallback)
@@ -241,5 +275,25 @@ namespace dosya_duzenleme
 
         private void SwitchToEnglish_Click(object sender, RoutedEventArgs e) { ApplyLanguage(new CultureInfo("en")); }
         private void SwitchToTurkish_Click(object sender, RoutedEventArgs e) { ApplyLanguage(new CultureInfo("tr-TR")); }
+
+        private void UpdateStatusBar()
+        {
+           
+            if (wordCountLabel == null || charCountLabel == null)
+                return;
+
+            var text = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd).Text;
+            var culture = CultureInfo.CurrentUICulture;
+
+            // Kelime sayısı (boşluklara göre ayırarak)
+            var wordCount = text.Split(new[] { ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
+            var wordLabel = GetStringOrFallback("Status_Words", culture, "Words:");
+            wordCountLabel.Text = $"{wordLabel} {wordCount}";
+
+            // Karakter sayısı (boşluklar dahil)
+            var charCount = text.TrimEnd('\r', '\n').Length;
+            var charLabel = GetStringOrFallback("Status_Chars", culture, "Characters:");
+            charCountLabel.Text = $"{charLabel} {charCount}";
+        }
     }
 }
